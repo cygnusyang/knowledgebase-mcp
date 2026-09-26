@@ -10,7 +10,6 @@
   "repository": "https://github.com/cygnusyang/knowledgebase-mcp",
   "license": "MIT",
   "keywords": ["obsidian", "knowledge-base", "notes", "mcp", "links"],
-  "mcpServers": "./.claude-plugin/mcp.json",
   "userConfig": {
     "obsidian_api_key": {
       "type": "string",
