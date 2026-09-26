@@ -76,6 +76,25 @@ Confirm the build is sound before wiring it up. This compiles and runs
 npm test
 ```
 
+### Docker (optional)
+
+A `Dockerfile` is included. One thing bites everyone here: inside a container
+`127.0.0.1` is *the container*, not your machine, so Obsidian on the host has to
+be addressed explicitly.
+
+```bash
+docker build -t knowledgebase-mcp .
+
+docker run --rm -i \
+  -e OBSIDIAN_API_KEY=your-key-here \
+  -e OBSIDIAN_BASE_URL=http://host.docker.internal:27123 \
+  knowledgebase-mcp
+```
+
+`-i` is required rather than stylistic: the transport is stdio, so without it
+stdin closes immediately and the client sees the server exit. On Linux,
+`host.docker.internal` needs `--add-host=host.docker.internal:host-gateway`.
+
 ## Configure your MCP client
 
 ### Claude Code
