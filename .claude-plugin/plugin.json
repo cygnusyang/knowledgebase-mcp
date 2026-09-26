@@ -10,16 +10,6 @@
   "repository": "https://github.com/cygnusyang/knowledgebase-mcp",
   "license": "MIT",
   "keywords": ["obsidian", "knowledge-base", "notes", "mcp", "links"],
-  "mcpServers": {
-    "knowledgebase": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/src/server.js"],
-      "env": {
-        "OBSIDIAN_API_KEY": "${user_config.obsidian_api_key}",
-        "KNOWLEDGEBASE_READ_ONLY": "${user_config.knowledgebase_read_only}"
-      }
-    }
-  },
   "userConfig": {
     "obsidian_api_key": {
       "type": "string",
