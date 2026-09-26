@@ -4,6 +4,18 @@
   "private": true,
   "type": "module",
   "description": "MCP server exposing knowledge-base tools over Obsidian Local REST API",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cygnusyang/knowledgebase-mcp.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "obsidian",
+    "knowledge-base",
+    "claude"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -12,6 +24,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "start": "node dist/src/server.js",
     "test": "tsc && node --test dist/tests/*.test.js",
     "typecheck": "tsc --noEmit"
