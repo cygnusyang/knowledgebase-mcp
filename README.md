@@ -101,9 +101,25 @@ runs **55 tests** without touching a network or a live vault:
 npm test
 ```
 
-> Note for contributors: `dist/src` **is** committed, because a plugin install
-> copies files and never runs `npm install`. After editing `src/`, run
-> `npm run build` and commit the result, or the plugin keeps serving stale code.
+> **Notes for contributors** — two consequences of shipping as a plugin:
+>
+> **`dist/src` is committed.** A plugin install copies files and never runs
+> `npm install`, so the built JavaScript has to be in the repo. After editing
+> `src/`, run `npm run build` and commit the result, or the plugin keeps serving
+> stale code.
+>
+> **The root `.mcp.json` does double duty.** It declares the server to the plugin
+> loader, and it is also — by Claude Code's convention — this repository's
+> project-scoped MCP config. Opening Claude Code in this directory will therefore
+> offer to add a second `knowledgebase` server whose `${CLAUDE_PLUGIN_ROOT}`
+> cannot resolve outside plugin context. Decline it; the plugin's own copy is the
+> one that works.
+>
+> That declaration cannot move under `.claude-plugin/`: pointing `plugin.json`'s
+> `mcpServers` at a config path does not register (the loader reports
+> `MCP servers (0)`), so the root `.mcp.json` is load-bearing. Note also that
+> `claude plugin validate .` only validates the *marketplace* manifest — it never
+> inspects `plugin.json`, so a passing validation says nothing about that file.
 
 ## Configure your MCP client
 
