@@ -76,11 +76,13 @@ Plugin MCP servers show up in `/mcp` as `plugin:knowledgebase-mcp:knowledgebase`
 and the tools are namespaced accordingly, e.g.
 `mcp__plugin_knowledgebase-mcp_knowledgebase__read_note`.
 
-From a shell, `claude plugin install` never prompts, so pass the key up front:
+From a shell, `claude plugin install` never prompts, so pass the key up front.
+Note that `--config` takes the **`userConfig` key** (`obsidian_api_key`), not the
+environment variable name the server reads:
 
 ```bash
 claude plugin install knowledgebase-mcp@knowledgebase-mcp \
-  --config OBSIDIAN_API_KEY=your-key-here
+  --config obsidian_api_key=your-key-here
 ```
 
 ### Manually, for other MCP clients
