@@ -1,0 +1,15 @@
+node_modules/
+dist/
+
+# Real credentials. Keep .env.example tracked, never .env.
+.env
+.env.local
+.env.*.local
+
+*.log
+npm-debug.log*
+
+.DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo

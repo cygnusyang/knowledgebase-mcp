@@ -1,0 +1,337 @@
+/**
+ * HTTP client for Obsidian Local REST API.
+ *
+ * Deliberately thin: the plugin already exposes the full vault surface, so this
+ * layer only encodes what HTTP requires — bearer auth, per-segment path
+ * encoding, timeouts, and a read-only kill switch. No HTTP dependency; Node 22
+ * ships `fetch`.
+ *
+ * Two shapes here are worth knowing about because they drive the tool layer:
+ *
+ * - `GET /vault/{path}` with `Accept: application/vnd.olrapi.note+json` returns
+ *   Obsidian's *own* metadata cache — resolved `links`, `backlinks`, and
+ *   `unresolvedLinks`. Those are authoritative in a way a re-parser can never
+ *   be, so the client asks for them rather than deriving them.
+ * - A directory listing is a flat array of strings relative to the listed
+ *   directory, where a trailing `/` marks a subdirectory. There is no object
+ *   form, so the parser normalizes to full vault-relative paths here.
+ */
+
+import { encodeVaultDir, encodeVaultPath, normalizeVaultPath } from "./paths.js";
+
+export interface Config {
+  baseUrl: string;
+  apiKey: string;
+  /** When true, every mutating call throws before it reaches the network. */
+  readOnly: boolean;
+  timeoutMs: number;
+}
+
+export class ConfigError extends Error {
+  override readonly name = "ConfigError";
+}
+
+export class ObsidianError extends Error {
+  override readonly name = "ObsidianError";
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly detail?: string,
+  ) {
+    super(message);
+  }
+}
+
+const DEFAULT_BASE_URL = "http://127.0.0.1:27123";
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/** Values treated as "on" for boolean env vars. */
+const TRUTHY = new Set(["1", "true", "yes", "on"]);
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const apiKey = env["OBSIDIAN_API_KEY"]?.trim();
+  if (apiKey === undefined || apiKey === "") {
+    throw new ConfigError(
+      "OBSIDIAN_API_KEY is required. Copy it from Obsidian's Local REST API plugin " +
+        "settings, then pass it via the MCP server's env config.",
+    );
+  }
+
+  const rawUrl = env["OBSIDIAN_BASE_URL"]?.trim();
+  const baseUrl = (rawUrl === undefined || rawUrl === "" ? DEFAULT_BASE_URL : rawUrl).replace(/\/+$/, "");
+
+  const timeoutMs = parsePositiveInt(env["OBSIDIAN_TIMEOUT_MS"], DEFAULT_TIMEOUT_MS, "OBSIDIAN_TIMEOUT_MS");
+
+  return {
+    baseUrl,
+    apiKey,
+    readOnly: TRUTHY.has((env["KNOWLEDGEBASE_READ_ONLY"] ?? "").trim().toLowerCase()),
+    timeoutMs,
+  };
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ConfigError(`${name} must be a positive integer, got ${JSON.stringify(raw)}.`);
+  }
+  return value;
+}
+
+/** Obsidian's parsed representation of a note — the shape behind `note+json`. */
+export interface NoteJson {
+  path: string;
+  content: string;
+  tags: string[];
+  frontmatter: Record<string, unknown>;
+  stat: { ctime: number; mtime: number; size: number };
+  /** Vault-relative paths of files this note links to (resolved by Obsidian). */
+  links: string[];
+  /** Vault-relative paths of files that link to this note. */
+  backlinks: string[];
+  /** Link text that does not resolve to any file — dangling links. */
+  unresolvedLinks: string[];
+}
+
+export interface FolderListing {
+  /** Vault-relative path of the listed directory; `""` is the vault root. */
+  path: string;
+  folders: string[];
+  files: string[];
+}
+
+export interface SearchHit {
+  filename: string;
+  score: number;
+  matches: { context: string; start: number; end: number }[];
+}
+
+export interface ActiveNote {
+  /** Vault-relative path, taken from the `Content-Location` response header. */
+  path: string;
+  content: string;
+}
+
+export class ObsidianClient {
+  constructor(private readonly config: Config) {}
+
+  get readOnly(): boolean {
+    return this.config.readOnly;
+  }
+
+  private url(path: string): string {
+    return `${this.config.baseUrl}/${path}`;
+  }
+
+  private async request(
+    method: string,
+    path: string,
+    options: { accept?: string; body?: string; contentType?: string } = {},
+  ): Promise<Response> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.config.apiKey}`,
+      Accept: options.accept ?? "text/markdown",
+    };
+    if (options.contentType !== undefined) headers["Content-Type"] = options.contentType;
+
+    let response: Response;
+    try {
+      response = await fetch(this.url(path), {
+        method,
+        headers,
+        body: options.body,
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+    } catch (error) {
+      throw new ObsidianError(
+        `Cannot reach Obsidian at ${this.config.baseUrl}. Check that Obsidian is running and ` +
+          `the Local REST API plugin is enabled. (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+
+    if (!response.ok) throw await this.toError(response);
+    return response;
+  }
+
+  private async toError(response: Response): Promise<ObsidianError> {
+    const detail = await response.text().catch(() => "");
+    const reason = detail === "" ? "" : ` — ${detail.slice(0, 300)}`;
+    switch (response.status) {
+      case 401:
+      case 403:
+        return new ObsidianError(
+          `Obsidian rejected the API key (HTTP ${response.status}).${reason}`,
+          response.status,
+          detail,
+        );
+      case 404:
+        return new ObsidianError(`No such file or folder in the vault (HTTP 404).${reason}`, 404, detail);
+      case 405:
+        return new ObsidianError(`That path is a directory, not a file (HTTP 405).${reason}`, 405, detail);
+      default:
+        return new ObsidianError(`Obsidian returned HTTP ${response.status}.${reason}`, response.status, detail);
+    }
+  }
+
+  /** Guard every mutating call so one env var disables all writes. */
+  private assertWritable(action: string): void {
+    if (this.config.readOnly) {
+      throw new ObsidianError(
+        `Refused to ${action}: this server is running read-only ` +
+          `(KNOWLEDGEBASE_READ_ONLY is set). Unset it to allow writes.`,
+        403,
+      );
+    }
+  }
+
+  async readNote(path: string): Promise<string> {
+    const response = await this.request("GET", `vault/${encodeVaultPath(normalizeVaultPath(path))}`);
+    return response.text();
+  }
+
+  /**
+   * Read a note together with Obsidian's parsed metadata. This is the call that
+   * makes `get_links` and `get_backlinks` exact rather than heuristic.
+   */
+  async readNoteMetadata(path: string): Promise<NoteJson> {
+    const response = await this.request("GET", `vault/${encodeVaultPath(normalizeVaultPath(path))}`, {
+      accept: "application/vnd.olrapi.note+json",
+    });
+    const parsed: unknown = await response.json();
+    // An array also satisfies `typeof === "object"`, so it must be excluded
+    // explicitly — otherwise a malformed payload silently reads as an empty note.
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new ObsidianError("Obsidian returned a non-object for note metadata.");
+    }
+    const record = parsed as Partial<NoteJson>;
+    return {
+      path: record.path ?? normalizeVaultPath(path),
+      content: record.content ?? "",
+      tags: record.tags ?? [],
+      frontmatter: record.frontmatter ?? {},
+      stat: record.stat ?? { ctime: 0, mtime: 0, size: 0 },
+      links: record.links ?? [],
+      backlinks: record.backlinks ?? [],
+      unresolvedLinks: record.unresolvedLinks ?? [],
+    };
+  }
+
+  async writeNote(path: string, content: string): Promise<void> {
+    this.assertWritable(`overwrite ${path}`);
+    await this.request("PUT", `vault/${encodeVaultPath(normalizeVaultPath(path))}`, {
+      body: content,
+      contentType: "text/markdown",
+    });
+  }
+
+  async appendNote(path: string, content: string): Promise<void> {
+    this.assertWritable(`append to ${path}`);
+    await this.request("POST", `vault/${encodeVaultPath(normalizeVaultPath(path))}`, {
+      body: content,
+      contentType: "text/markdown",
+    });
+  }
+
+  /**
+   * List a directory. Obsidian returns bare entry names with a trailing `/` on
+   * subdirectories; this normalizes to full vault-relative paths so callers
+   * never have to re-join them.
+   */
+  async listFolder(directory: string): Promise<FolderListing> {
+    const trimmed = directory.trim();
+    const normalized = trimmed === "" || trimmed === "/" ? "" : normalizeVaultPath(trimmed);
+    const response = await this.request("GET", encodeVaultDir(normalized), { accept: "application/json" });
+
+    const parsed: unknown = await response.json();
+    const entries = Array.isArray(parsed) ? parsed : extractEntries(parsed);
+    const folders: string[] = [];
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      if (typeof entry !== "string" || entry === "") continue;
+      const name = entry.replace(/\/$/, "");
+      const full = normalized === "" ? name : `${normalized}/${name}`;
+      if (entry.endsWith("/")) folders.push(full);
+      else files.push(full);
+    }
+
+    return { path: normalized, folders, files };
+  }
+
+  /** Obsidian's full-text search (`search_simple`). */
+  async search(query: string, contextLength = 100): Promise<SearchHit[]> {
+    const url = `search/simple/?query=${encodeURIComponent(query)}&contextLength=${contextLength}`;
+    const response = await this.request("POST", url, { accept: "application/json" });
+
+    const parsed: unknown = await response.json();
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.map((raw) => {
+      const hit = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+      const matches = Array.isArray(hit["matches"]) ? hit["matches"] : [];
+      return {
+        filename: typeof hit["filename"] === "string" ? hit["filename"] : "",
+        score: typeof hit["score"] === "number" ? hit["score"] : 0,
+        matches: matches.map((m) => {
+          const match = (typeof m === "object" && m !== null ? m : {}) as Record<string, unknown>;
+          const span = (typeof match["match"] === "object" && match["match"] !== null
+            ? match["match"]
+            : {}) as Record<string, unknown>;
+          return {
+            context: typeof match["context"] === "string" ? match["context"] : "",
+            start: typeof span["start"] === "number" ? span["start"] : 0,
+            end: typeof span["end"] === "number" ? span["end"] : 0,
+          };
+        }),
+      };
+    });
+  }
+
+  /**
+   * The currently open note. The path is not in the body — `GET /active/`
+   * returns only content and reports which file it acted on in a
+   * `Content-Location` header.
+   */
+  async activeNote(): Promise<ActiveNote> {
+    const response = await this.request("GET", "active/");
+    const location = response.headers.get("Content-Location");
+    const content = await response.text();
+    return { path: location === null ? "" : decodeVaultPath(location), content };
+  }
+
+  /**
+   * Ask Obsidian's UI to open a note. Unlike every other call here this route is
+   * registered by the plugin at runtime rather than declared in its checked-in
+   * spec, so treat a 404 here as "this plugin version does not expose it"
+   * rather than "no such note".
+   */
+  async openNote(path: string): Promise<void> {
+    await this.request("POST", `open/${encodeVaultPath(normalizeVaultPath(path))}`);
+  }
+}
+
+/** Tolerate a `{ files: [...] }` wrapper in case a plugin version nests it. */
+function extractEntries(parsed: unknown): unknown[] {
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const files = (parsed as Record<string, unknown>)["files"];
+  return Array.isArray(files) ? files : [];
+}
+
+/**
+ * Decode a `Content-Location` value, which percent-encodes each path component
+ * separately — so a literal `%2F` inside a filename must survive as a slash
+ * within that component rather than becoming a separator.
+ */
+function decodeVaultPath(encoded: string): string {
+  return encoded
+    .split("/")
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    })
+    .join("/");
+}
