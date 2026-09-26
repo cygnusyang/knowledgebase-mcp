@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "knowledgebase-mcp",
+  "owner": {
+    "name": "cygnusyang",
+    "url": "https://github.com/cygnusyang"
+  },
+  "description": "Obsidian knowledge-base tools for Claude Code, over the Local REST API plugin.",
+  "plugins": [
+    {
+      "name": "knowledgebase-mcp",
+      "source": "./",
+      "description": "Read, search, and write an Obsidian vault: notes, folders, tags, and the link graph. Read-only by default.",
+      "category": "knowledge",
+      "tags": ["obsidian", "notes", "knowledge-base", "mcp", "links"]
+    }
+  ]
+}

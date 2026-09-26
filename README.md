@@ -59,6 +59,32 @@ If neither matters to you, use the plugin's `/mcp/` and delete this repo.
 
 ## Install
 
+### As a Claude Code plugin (recommended)
+
+This repo is its own plugin marketplace, so there is nothing to clone or build:
+
+```
+/plugin marketplace add cygnusyang/knowledgebase-mcp
+/plugin install knowledgebase-mcp@knowledgebase-mcp
+```
+
+Claude Code prompts for your Obsidian API key and stores it in the OS credential
+store rather than in `settings.json`. **Read-only mode is on by default** — flip
+it in `/config` when you want the agent to be able to write.
+
+Plugin MCP servers show up in `/mcp` as `plugin:knowledgebase-mcp:knowledgebase`,
+and the tools are namespaced accordingly, e.g.
+`mcp__plugin_knowledgebase-mcp_knowledgebase__read_note`.
+
+From a shell, `claude plugin install` never prompts, so pass the key up front:
+
+```bash
+claude plugin install knowledgebase-mcp@knowledgebase-mcp \
+  --config OBSIDIAN_API_KEY=your-key-here
+```
+
+### Manually, for other MCP clients
+
 ```bash
 git clone https://github.com/cygnusyang/knowledgebase-mcp.git
 cd knowledgebase-mcp
@@ -66,15 +92,16 @@ npm install
 ```
 
 `npm install` compiles TypeScript via the `prepare` script, so `dist/` is ready
-afterwards. (That directory is git-ignored — the repo ships source, not build
-output.)
-
-Confirm the build is sound before wiring it up. This compiles and runs
-**55 tests** without touching a network or a live vault:
+afterwards. Confirm the build is sound before wiring it up — this compiles and
+runs **55 tests** without touching a network or a live vault:
 
 ```bash
 npm test
 ```
+
+> Note for contributors: `dist/src` **is** committed, because a plugin install
+> copies files and never runs `npm install`. After editing `src/`, run
+> `npm run build` and commit the result, or the plugin keeps serving stale code.
 
 ## Configure your MCP client
 

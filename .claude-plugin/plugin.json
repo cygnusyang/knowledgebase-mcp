@@ -1,0 +1,39 @@
+{
+  "name": "knowledgebase-mcp",
+  "displayName": "Knowledgebase MCP",
+  "version": "0.1.0",
+  "description": "Read, search, and write an Obsidian vault over the Local REST API plugin.",
+  "author": {
+    "name": "cygnusyang",
+    "url": "https://github.com/cygnusyang"
+  },
+  "repository": "https://github.com/cygnusyang/knowledgebase-mcp",
+  "license": "MIT",
+  "keywords": ["obsidian", "knowledge-base", "notes", "mcp", "links"],
+  "mcpServers": {
+    "knowledgebase": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/src/server.js"],
+      "env": {
+        "OBSIDIAN_API_KEY": "${user_config.obsidian_api_key}",
+        "KNOWLEDGEBASE_READ_ONLY": "${user_config.knowledgebase_read_only}"
+      }
+    }
+  },
+  "userConfig": {
+    "obsidian_api_key": {
+      "type": "string",
+      "title": "Obsidian API key",
+      "description": "From the Local REST API plugin's settings in Obsidian. Grants read, write, and delete over the whole vault, and is stored in the OS credential store rather than settings.json.",
+      "sensitive": true,
+      "required": true
+    },
+    "knowledgebase_read_only": {
+      "type": "string",
+      "title": "Read-only mode",
+      "description": "Disables every write, including write_note. Leave this on unless you want the agent to be able to modify notes.",
+      "options": ["true", "false"],
+      "default": "true"
+    }
+  }
+}

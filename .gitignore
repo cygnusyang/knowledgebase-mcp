@@ -1,5 +1,14 @@
 node_modules/
-dist/
+
+# Build output is ignored, with one deliberate exception: dist/src is the
+# compiled server that the Claude Code plugin ships. A marketplace install
+# copies files into a cache and never runs `npm install`, so the built
+# JavaScript has to be in the repo for the plugin to start.
+#
+# Consequence: after editing src/, run `npm run build` and commit the result,
+# or the plugin will keep serving stale code. dist/tests stays ignored.
+dist/*
+!dist/src/
 
 # Real credentials. Keep .env.example tracked, never .env.
 .env
