@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
   console.error(
     `knowledgebase-mcp ${VERSION} ready — ${config.baseUrl}` +
-      `${config.readOnly ? " (read-only)" : ""}, 9 tools registered.`,
+      `${config.readOnly ? " (read-only)" : ""}, 8 tools registered.`,
   );
 }
 
