@@ -254,6 +254,18 @@ test("listFolder tolerates a wrapped and a malformed payload", async (t) => {
   assert.deepEqual((await client().listFolder("d")).files, []);
 });
 
+test("listFolder splits folders from files inside the real { files } envelope", async (t) => {
+  // The plugin really does wrap the listing in `{ files: [...] }` — confirmed
+  // against a live instance, not assumed. The tests above cover the envelope
+  // and the folder/file split separately, but production only ever hits them
+  // together, so this pins that combination.
+  stubFetch(t, () => json({ files: ["Projects/", "Inbox/", "Home.md"] }));
+  const listing = await client().listFolder("");
+
+  assert.deepEqual(listing.folders, ["Projects", "Inbox"]);
+  assert.deepEqual(listing.files, ["Home.md"]);
+});
+
 // -------------------------------------------------------------- active / search
 
 test("activeNote takes the path from the Content-Location header", async (t) => {
@@ -296,11 +308,3 @@ test("search returns an empty list for a malformed payload", async (t) => {
   assert.deepEqual(await client().search("x"), []);
 });
 
-// ----------------------------------------------------------------- open_note
-
-test("openNote POSTs to the runtime-registered open route", async (t) => {
-  const calls = stubFetch(t, () => new Response("", { status: 200 }));
-  await client().openNote("Notes/a.md");
-  assert.equal(calls[0]?.method, "POST");
-  assert.equal(calls[0]?.url, "http://127.0.0.1:27123/open/Notes/a.md");
-});

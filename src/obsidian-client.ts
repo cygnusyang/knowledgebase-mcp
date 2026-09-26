@@ -234,9 +234,10 @@ export class ObsidianClient {
   }
 
   /**
-   * List a directory. Obsidian returns bare entry names with a trailing `/` on
-   * subdirectories; this normalizes to full vault-relative paths so callers
-   * never have to re-join them.
+   * List a directory. The plugin answers with a `{ files: [...] }` envelope
+   * holding bare entry names, a trailing `/` marking a subdirectory (verified
+   * against a live instance — see README). This normalizes to full
+   * vault-relative paths so callers never have to re-join them.
    */
   async listFolder(directory: string): Promise<FolderListing> {
     const trimmed = directory.trim();
@@ -299,19 +300,13 @@ export class ObsidianClient {
     const content = await response.text();
     return { path: location === null ? "" : decodeVaultPath(location), content };
   }
-
-  /**
-   * Ask Obsidian's UI to open a note. Unlike every other call here this route is
-   * registered by the plugin at runtime rather than declared in its checked-in
-   * spec, so treat a 404 here as "this plugin version does not expose it"
-   * rather than "no such note".
-   */
-  async openNote(path: string): Promise<void> {
-    await this.request("POST", `open/${encodeVaultPath(normalizeVaultPath(path))}`);
-  }
 }
 
-/** Tolerate a `{ files: [...] }` wrapper in case a plugin version nests it. */
+/**
+ * Unwrap the `{ files: [...] }` envelope. This is the shape the plugin really
+ * sends, verified against a live instance — not a defensive guess. The
+ * flat-array form a different version might return is handled by the caller.
+ */
 function extractEntries(parsed: unknown): unknown[] {
   if (typeof parsed !== "object" || parsed === null) return [];
   const files = (parsed as Record<string, unknown>)["files"];

@@ -21,7 +21,7 @@ claude mcp add --transport http obsidian http://127.0.0.1:27123/mcp/ \
 This server exists for the two things the plugin's endpoint does not give you:
 
 1. **Coarse, intent-shaped tools.** The plugin offers ~20 fine-grained tools.
-   This server offers 9 named for intent (`get_backlinks`, `get_metadata`)
+   This server offers 8 named for intent (`get_backlinks`, `get_metadata`)
    rather than mechanism (`get_heading`, `set_frontmatter`). Fewer, larger
    tools means fewer ways for an agent to make a wrong decision in one call.
 2. **A policy layer.** One environment variable (`KNOWLEDGEBASE_READ_ONLY`)
@@ -64,7 +64,7 @@ runs 55 tests without touching a network or a live vault.
 
 ## Tools
 
-Nine tools, deliberately. Reads are marked read-only; `write_note` is the only
+Eight tools, deliberately. Reads are marked read-only; `write_note` is the only
 one that modifies the vault.
 
 | Tool | Kind | What it does |
@@ -77,7 +77,6 @@ one that modifies the vault.
 | `get_links` | read | Notes this note links to, plus unresolved (dangling) links. |
 | `get_backlinks` | read | Notes that link *to* this note. |
 | `get_active_note` | read | The note currently open in Obsidian. |
-| `open_note` | ui | Open a note in the Obsidian UI. Changes the screen, not the vault. |
 
 ### Links and backlinks come from Obsidian, not from us
 
@@ -125,25 +124,25 @@ scoped. Three consequences worth stating plainly:
   both; leaving them out means the worst outcome from a confused agent is a
   rewritten file, not a lost one.
 
-## Two things to verify against your own instance
+## Verified against a live instance
 
-Both are honest gaps rather than known-good behaviour:
+Two things were previously flagged here as unverified. Both are now settled by
+querying a running Obsidian (plugin 5.2.0):
 
-1. **`/open/` is not in the plugin's checked-in spec.** The plugin registers
-   routes at runtime via its extension API, so `open_note` is implemented
-   against a route I could not confirm from the repository. Check it:
+1. **There is no `/open/` route.** The instance exposes exactly ten:
+   `/`, `/active/`, `/commands/`, `/mcp/`, `/openapi.yaml`,
+   `/obsidian-local-rest-api.crt`, `/search/`, `/search/simple/`, `/tags/`,
+   `/vault/`. The plugin registers routes at runtime, so the checked-in spec is
+   a *base* spec — but this route is missing from the running surface too. The
+   plugin's own `/mcp/` endpoint does offer `open_file`, yet that is MCP rather
+   than REST, and no `/commands/` entry opens a file by path (the
+   `editor:open-link-*` family needs a cursor; the `app:*` family is
+   vault/settings level). **That is why there is no `open_note` tool** — it
+   could not be implemented honestly against this API.
 
-   ```bash
-   curl -s -H "Authorization: Bearer $OBSIDIAN_API_KEY" \
-     http://127.0.0.1:27123/openapi.yaml | grep -n "^  /open"
-   ```
-
-   If nothing appears, `open_note` will return a 404 — the other eight tools are
-   unaffected.
-
-2. **Directory listing shape.** `list_folder` assumes a flat string array where
-   a trailing `/` marks a folder. It also tolerates a `{ files: [...] }` wrapper,
-   but only a live vault confirms which the plugin actually sends.
+2. **The directory listing is wrapped:** `{ "files": ["Folder/", "Note.md"] }`
+   — bare entry names, a trailing `/` marking a subdirectory. `list_folder`
+   handles this; the flat-array branch remains as a fallback.
 
 To confirm the metadata path works at all:
 
@@ -171,7 +170,7 @@ Layout:
 - `src/links.ts` — wikilink parsing (alias/heading/block/embed) used for link
   *detail*.
 - `src/obsidian-client.ts` — config loading and the HTTP client.
-- `src/tools.ts` — the nine tool registrations.
+- `src/tools.ts` — the eight tool registrations.
 - `src/server.ts` — stdio entry point.
 
 ## License

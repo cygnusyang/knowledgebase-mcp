@@ -1,5 +1,5 @@
 /**
- * The nine tools exposed to the agent.
+ * The eight tools exposed to the agent.
  *
  * Two design choices run through this file.
  *
@@ -278,26 +278,6 @@ export function registerTools(server: McpServer, client: ObsidianClient): void {
         return ok(
           includeContent ? { path: active.path, content: active.content } : { path: active.path },
         );
-      } catch (error) {
-        return failed(error);
-      }
-    },
-  );
-
-  server.registerTool(
-    "open_note",
-    {
-      title: "Open note in Obsidian",
-      description:
-        "Open a note in the Obsidian UI so the user can see it. This changes what is on " +
-        "the user's screen but does not modify any file.",
-      inputSchema: { path: notePath },
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-    },
-    async ({ path }) => {
-      try {
-        await client.openNote(path);
-        return ok({ opened: path });
       } catch (error) {
         return failed(error);
       }
